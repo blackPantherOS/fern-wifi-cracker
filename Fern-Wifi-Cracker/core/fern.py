@@ -412,7 +412,8 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
 
         # List Interface cards
         compatible_interface = str(subprocess.getoutput("airmon-ng"))
-        interface_list = os.listdir('/sys/class/net')
+        # Not requires all interface -> interface_list = os.listdir('/sys/class/net')
+        interface_list = subprocess.getoutput("/usr/sbin/iw dev | grep Interface | awk '{print $2}'").split('\n')
 
         # Interate over interface output and update combo box
         isHasCompatibleCard = False
@@ -498,7 +499,9 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
         subprocess.getstatusoutput('ifconfig %s down' % (
             self.monitor_interface))  # Avoid this:  "ioctl(SIOCSIWMODE) failed: Device or resource busy"
 
+        print("Interface CARD:"+ monitor_card)
         status = str(subprocess.getoutput("airmon-ng start %s" % (monitor_card)))
+
         messages = ("monitor mode enabled", "monitor mode vif enabled", "monitor mode already")
 
         monitor_created = False;
@@ -517,17 +520,28 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
             elif ('monitor mode vif enabled' in status):
                 regex = re.compile("wlan\dmon", re.IGNORECASE)
 
-            interfaces = regex.findall(monitor_interface_process)
-            if (interfaces):
-                self.monitor_interface = interfaces[0]
-            else:
-                self.monitor_interface = monitor_card
+            try:
+                interfaces = regex.findall(monitor_interface_process)
+            except:
+                interfaces = []
 
+            #if (interfaces):
+            #    self.monitor_interface = interfaces[0]
+            #else:
+            #    self.monitor_interface = monitor_card
+            #    #self.monitor_interface = monitor_card
+            # <- previous code can't select good active device
+
+            self.monitor_interface = str(subprocess.getoutput("airmon-ng | grep phy | awk '{print $2}'| grep "+ monitor_card))
+
+            print("Monitor Interface :" + self.monitor_interface )
             variables.monitor_interface = self.monitor_interface
             self.interface_combo.setEnabled(False)
             variables.wps_functions.monitor_interface = self.monitor_interface
             self.monitor_mode_enabled_signal.emit()
-
+            self.scan_button.setEnabled(True)
+            self.scan_button_label.setEnabled(True)
+            
             # Create Fake Mac Address and index for use
             mon_down = subprocess.getstatusoutput('ifconfig %s down' % (self.monitor_interface))
             if mac_setting_exists:
@@ -617,7 +631,7 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
             self.wpa_clientlabel.setEnabled(False)
             self.wep_clientlabel.setText("None Detected")
             self.wpa_clientlabel.setText("None Detected")
-            self.label_7.setText("<font Color=green>\t Initializing</font>")
+            self.scan_button_label.setText("<font Color=green>\t Initializing</font>")
             threading.Thread(target=self.scan_wep).start()
             self.scan_button.clicked.disconnect(self.scan_network)
             self.scan_button.clicked.connect(self.stop_scan_network)
@@ -629,7 +643,7 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
         variables.exec_command('rm -r /tmp/fern-log/*.cap')
         variables.exec_command('killall airodump-ng')
         variables.exec_command('killall airmon-ng')
-        self.label_7.setText("<font Color=red>\t Stopped</font>")
+        self.scan_button_label.setText("<font Color=red>\t Stopped</font>")
         variables.wps_functions.stop_WPS_Scanning()  # Stops WPS scanning
         self.wep_clientlabel.setText("None Detected")
         self.wpa_clientlabel.setText("None Detected")
@@ -641,7 +655,7 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
         scan_control = 1
         variables.exec_command('killall airodump-ng')
         variables.exec_command('killall airmon-ng')
-        self.label_7.setText("<font Color=red>\t Stopped</font>")
+        self.scan_button_label.setText("<font Color=red>\t Stopped</font>")
 
     #
     # WEP Thread SLOTS AND SIGNALS
@@ -697,7 +711,6 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
 
         error_catch = variables.exec_command("%s 'airodump-ng -a --write /tmp/fern-log/zfern-wep --output-format csv\
                                         --encrypt wep %s'" % (wep_display_mode, self.monitor_interface))  # FOR WEP
-
     def scan_process2_thread1(self):
         global error_catch
         if bool(variables.xterm_setting):  # if True or if xterm contains valid ascii characters
@@ -771,7 +784,7 @@ class mainwindow(QtWidgets.QDialog, Ui_Dialog):
 
         time.sleep(5)
         if scan_control != 1:
-            self.label_7.setText("<font Color=green>\t Active</font>")
+            self.scan_button_label.setText("<font Color=green>\t Active</font>")
 
         while scan_control != 1:
             try:
